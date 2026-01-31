@@ -1,10 +1,4 @@
 if(WIN32)
-    if(ENABLE_ASAN_UBSAN AND ${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-        set(TEST_LIBS ${CMAKE_BUILD_TYPE}_asan_ubsan/win64)
-    else()
-        set(TEST_LIBS ${CMAKE_BUILD_TYPE}/win64)
-    endif()
-
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         if (NOT DEFINED ENV{LLVM_LIB})
             message(FATAL_ERROR "LLVM_LIB is not set")
@@ -24,4 +18,3 @@ endif()
 
 message("[${projectName}] CMAKE_CXX_FLAGS: [${CMAKE_CXX_FLAGS}]")
 message("[${projectName}] ENABLE_ASAN_UBSAN: [${ENABLE_ASAN_UBSAN}]")
-message("[${projectName}] TEST_LIBS: [${TEST_LIBS}]")
