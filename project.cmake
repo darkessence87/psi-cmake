@@ -163,6 +163,7 @@ if(NOT COMMAND psi_config_target)
                 $<$<CXX_COMPILER_ID:Clang>:-Wswitch-enum>
                 $<$<CXX_COMPILER_ID:Clang>:-Wcovered-switch-default>
                 $<$<CXX_COMPILER_ID:Clang>:-Wno-switch-default>
+                $<$<CXX_COMPILER_ID:Clang>:-Wno-padded>
                 -O2
                 /fsanitize=address
                 -fsanitize=undefined
@@ -179,6 +180,7 @@ if(NOT COMMAND psi_config_target)
                 $<$<CXX_COMPILER_ID:Clang>:-Wswitch-enum>
                 $<$<CXX_COMPILER_ID:Clang>:-Wcovered-switch-default>
                 $<$<CXX_COMPILER_ID:Clang>:-Wno-switch-default>
+                $<$<CXX_COMPILER_ID:Clang>:-Wno-padded>
             )
         endif()
     endfunction()
