@@ -119,7 +119,7 @@ if(NOT COMMAND psi_make_tests)
         endif()
 
         include_directories(${3rdPARTY_DIR}/psi-test/psi/include/test)
-        set(test_libs "psi-test;psi-test-registry")
+        set(test_libs "psi-test")
         if(ENABLE_ASAN_UBSAN)
             set(PSI_DEP_LIBS "${PSI_DEP_LIBS};clang_rt.asan_dynamic-x86_64;clang_rt.asan_dynamic_runtime_thunk-x86_64")
         endif()
