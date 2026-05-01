@@ -151,6 +151,16 @@ endif()
 
 if(NOT COMMAND psi_config_target)
     function(psi_config_target target_name)
+        # INTERFACE libraries (header-only) have no compile/link of their own,
+        # so propagate only the C++ standard via INTERFACE and skip warnings,
+        # sanitizers and runtime linkage (consumers get those when they call
+        # psi_config_target on their own STATIC/EXECUTABLE targets).
+        get_target_property(_psi_target_type ${target_name} TYPE)
+        if(_psi_target_type STREQUAL "INTERFACE_LIBRARY")
+            target_compile_features(${target_name} INTERFACE cxx_std_20)
+            return()
+        endif()
+
         target_compile_features(${target_name} PUBLIC cxx_std_20)
 
         # Common Clang warnings (apply to both clang.exe and clang-cl since
@@ -198,7 +208,6 @@ if(NOT COMMAND psi_config_target)
                     )
                     # Copy the ASAN runtime DLL next to the executable so
                     # tests/examples can run without extending PATH manually.
-                    get_target_property(_psi_target_type ${target_name} TYPE)
                     if(_psi_target_type STREQUAL "EXECUTABLE")
                         set(_psi_asan_dll "$ENV{LLVM_LIB}/clang_rt.asan_dynamic-x86_64.dll")
                         if(EXISTS "${_psi_asan_dll}")
