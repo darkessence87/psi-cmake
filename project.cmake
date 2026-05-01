@@ -83,26 +83,22 @@ if(NOT COMMAND add_psi_dependency)
             return()
         endif()
 
+        # Global include path for legacy modules that don't use
+        # target_link_libraries to consume the dependency yet.
         include_directories(${dep_path}/psi/include)
-        link_directories(${dep_path}/build/bin/${CMAKE_BUILD_TYPE})
-        link_directories(${BUILD_OUT})
 
-        file(GLOB_RECURSE psiLib1 ${dep_path}/build/bin/${CMAKE_BUILD_TYPE}/psi-${name}.lib)
-        file(GLOB_RECURSE psiLib2 ${BUILD_OUT}/psi-${name}.lib)
+        # Bring the dependency in as a CMake subproject so that its targets
+        # (psi-<name> / psi::<name>) become available, with PUBLIC includes
+        # propagating transitively via target_link_libraries.
+        if(NOT TARGET psi-${name})
+            set(PSI_BUILD_TESTS false)
+            set(PSI_BUILD_EXAMPLES false)
+            message("[${projectName}] configuring [psi-${name}]... ${dep_path}")
+            add_subdirectory(${dep_path} ${CMAKE_BINARY_DIR}/_deps/psi-${name})
+        endif()
 
-        if(psiLib1 OR psiLib2)
+        if(TARGET psi-${name})
             set(PSI_DEP_LIBS "${PSI_DEP_LIBS};psi-${name};" PARENT_SCOPE)
-        else()
-            if(${is_dependent} STREQUAL "yes")
-                set(PSI_BUILD_TESTS false)
-                set(PSI_BUILD_EXAMPLES false)
-
-                message("[${projectName}] configuring submodule [psi-${name}]... ${dep_path}")
-                add_subdirectory(${dep_path})
-                set(PSI_DEP_LIBS "${PSI_DEP_LIBS};psi-${name};" PARENT_SCOPE)
-            else()
-                message("[${projectName}] If [psi-${name}] should not have library, then ignore this message. Otherwise, build it: ${dep_path}")
-            endif()
         endif()
 
         if(${name} STREQUAL "logger")
@@ -118,18 +114,19 @@ if(NOT COMMAND psi_make_tests)
             return()
         endif()
 
-        include_directories(${3rdPARTY_DIR}/psi-test/psi/include/test)
-        set(test_libs "psi-test")
-        if(ENABLE_ASAN_UBSAN)
-            set(PSI_DEP_LIBS "${PSI_DEP_LIBS};clang_rt.asan_dynamic-x86_64;clang_rt.asan_dynamic_runtime_thunk-x86_64")
+        # psi-test target is brought in via add_psi_dependency(test) in
+        # the module's dependencies.cmake. Its PUBLIC include directory
+        # propagates transitively through target_link_libraries.
+        if(NOT TARGET psi-test)
+            message(WARNING "[psi_make_tests] target 'psi-test' not found; "
+                "did you call add_psi_dependency(test) in dependencies.cmake?")
+            return()
         endif()
-        link_directories(${3rdPARTY_DIR}/psi-test/build/${CMAKE_BUILD_TYPE})
 
         set(fileName PSI_TEST_${name})
         add_executable(${fileName} ${PROJECT_SOURCE_DIR}/tests/EntryPoint.cpp ${src})
         psi_config_target(${fileName})
-        target_link_libraries(${fileName} ${libs} ${test_libs} ${PSI_DEP_LIBS})
-        target_include_directories(${fileName} SYSTEM PRIVATE ${3rdPARTY_DIR}/psi-test/psi/include/test)
+        target_link_libraries(${fileName} ${libs} psi-test ${PSI_DEP_LIBS})
     endfunction()
 endif()
 
