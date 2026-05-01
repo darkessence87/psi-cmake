@@ -45,67 +45,96 @@ endif()
 message("[${projectName}] Build out: ${BUILD_OUT}")
 
 # functions
-if(NOT COMMAND find_submodule)
-    function(find_submodule name path isDependent)
-        get_filename_component(submodules_base_dir ${CMAKE_CURRENT_LIST_DIR} DIRECTORY BASE_DIR)
+# Capture the location of psi-cmake itself at include-time so that helper
+# functions can resolve sibling modules regardless of where they are called
+# from. CMAKE_CURRENT_LIST_DIR inside a function refers to the caller's
+# file, not the file that defined the function.
+set(_PSI_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-        # message ("submodules_base_dir: ${submodules_base_dir}/${name}")
-        if(EXISTS ${submodules_base_dir}/${name})
-            set(${path} ${submodules_base_dir}/${name} PARENT_SCOPE)
-            set(${isDependent} "no" PARENT_SCOPE)
-        elseif(EXISTS ${3rdPARTY_DIR}/${name})
-            set(${path} ${3rdPARTY_DIR}/${name} PARENT_SCOPE)
-            set(${isDependent} "yes" PARENT_SCOPE)
-        else()
-        endif()
-    endfunction()
-endif()
-
-if(NOT COMMAND include_psi_dependency)
-    function(include_psi_dependency name)
-        find_submodule(psi-${name} dep_path is_dependent)
-        message("[${projectName}] psi_${name}_dir: ${dep_path}, is_dependent: ${is_dependent}")
-
-        if(NOT EXISTS ${dep_path})
-            return()
-        endif()
-
-        include_directories(${dep_path}/psi/include)
-    endfunction()
-endif()
-
-if(NOT COMMAND add_psi_dependency)
-    function(add_psi_dependency name)
-        find_submodule(psi-${name} dep_path is_dependent)
-        message("[${projectName}] psi_${name}_dir: ${dep_path}, is_dependent: ${is_dependent}")
-
-        if(NOT EXISTS ${dep_path})
-            return()
-        endif()
-
-        # Global include path for legacy modules that don't use
-        # target_link_libraries to consume the dependency yet.
-        include_directories(${dep_path}/psi/include)
-
-        # Bring the dependency in as a CMake subproject so that its targets
-        # (psi-<name> / psi::<name>) become available, with PUBLIC includes
-        # propagating transitively via target_link_libraries.
-        if(NOT TARGET psi-${name})
-            set(PSI_BUILD_TESTS false)
-            set(PSI_BUILD_EXAMPLES false)
-            message("[${projectName}] configuring [psi-${name}]... ${dep_path}")
-            add_subdirectory(${dep_path} ${CMAKE_BINARY_DIR}/_deps/psi-${name})
-        endif()
-
+if(NOT COMMAND psi_use)
+    # Bring a sibling psi-<name> module in as a CMake subproject. Sibling
+    # checkouts under ${submodules_root}/psi-<name> are preferred; fall back
+    # to a vendored copy under 3rdparty/psi-<name>. The dependency's CMake
+    # target (psi-<name>) becomes available with PUBLIC includes propagating
+    # transitively via target_link_libraries.
+    function(psi_use name)
         if(TARGET psi-${name})
-            set(PSI_DEP_LIBS "${PSI_DEP_LIBS};psi-${name};" PARENT_SCOPE)
+            return()
         endif()
+
+        get_filename_component(_psi_submodules_root "${_PSI_CMAKE_DIR}" DIRECTORY)
+        set(_psi_dep_path "")
+        if(EXISTS "${_psi_submodules_root}/psi-${name}/CMakeLists.txt")
+            set(_psi_dep_path "${_psi_submodules_root}/psi-${name}")
+        elseif(EXISTS "${PROJECT_SOURCE_DIR}/3rdparty/psi-${name}/CMakeLists.txt")
+            set(_psi_dep_path "${PROJECT_SOURCE_DIR}/3rdparty/psi-${name}")
+        endif()
+
+        if(NOT _psi_dep_path)
+            message(FATAL_ERROR "[${projectName}] psi-${name} not found "
+                "(looked in ${_psi_submodules_root}/psi-${name} and "
+                "${PROJECT_SOURCE_DIR}/3rdparty/psi-${name})")
+        endif()
+
+        message("[${projectName}] using psi-${name}: ${_psi_dep_path}")
+        set(PSI_BUILD_TESTS false)
+        set(PSI_BUILD_EXAMPLES false)
+        add_subdirectory(${_psi_dep_path} ${CMAKE_BINARY_DIR}/_deps/psi-${name})
 
         if(${name} STREQUAL "logger")
-            message("[${projectName}] found psi-logger")
             add_compile_definitions(PSI_LOGGER)
         endif()
     endfunction()
+endif()
+
+if(NOT COMMAND psi_link)
+    # target_link_libraries wrapper that auto-loads sibling psi-<name>
+    # subprojects via psi_use() before linking. Lets a module declare its
+    # dependencies in exactly one place (the psi/CMakeLists.txt that builds
+    # the target) instead of duplicating them in dependencies.cmake.
+    #
+    # Usage: psi_link(<target> [INTERFACE] dep1 dep2 ...)
+    #   Each dep that starts with "psi-" is brought in via psi_use() if its
+    #   target does not already exist; everything else is forwarded to
+    #   target_link_libraries as-is (system libs, absolute paths, etc.).
+    function(psi_link target_name)
+        set(_link_keyword "")
+        set(_libs "")
+        foreach(_arg ${ARGN})
+            if(_arg STREQUAL "INTERFACE" OR _arg STREQUAL "PUBLIC" OR _arg STREQUAL "PRIVATE")
+                set(_link_keyword "${_arg}")
+                continue()
+            endif()
+            if(_arg MATCHES "^psi-(.+)$")
+                psi_use(${CMAKE_MATCH_1})
+            endif()
+            list(APPEND _libs "${_arg}")
+        endforeach()
+
+        if(_link_keyword)
+            target_link_libraries(${target_name} ${_link_keyword} ${_libs})
+        else()
+            target_link_libraries(${target_name} ${_libs})
+        endif()
+    endfunction()
+endif()
+
+if(NOT COMMAND psi_deps)
+    # Declare module dependencies at the top level of a module's
+    # CMakeLists.txt. Each name (without the "psi-" prefix) is brought in
+    # as a CMake subproject via psi_use(). The full target list is also
+    # remembered in PSI_MODULE_DEPS so that psi_config_target can link the
+    # module's library against them automatically — no need to repeat the
+    # list inside psi/CMakeLists.txt.
+    #
+    # Usage: psi_deps(tools thread comm)
+    macro(psi_deps)
+        set(PSI_MODULE_DEPS "")
+        foreach(_dep ${ARGN})
+            psi_use(${_dep})
+            list(APPEND PSI_MODULE_DEPS "psi-${_dep}")
+        endforeach()
+    endmacro()
 endif()
 
 if(NOT COMMAND psi_make_tests)
@@ -114,19 +143,14 @@ if(NOT COMMAND psi_make_tests)
             return()
         endif()
 
-        # psi-test target is brought in via add_psi_dependency(test) in
-        # the module's dependencies.cmake. Its PUBLIC include directory
-        # propagates transitively through target_link_libraries.
-        if(NOT TARGET psi-test)
-            message(WARNING "[psi_make_tests] target 'psi-test' not found; "
-                "did you call add_psi_dependency(test) in dependencies.cmake?")
-            return()
-        endif()
+        # Make sure the psi-test target is available; bring it in lazily so
+        # callers don't have to declare it themselves.
+        psi_use(test)
 
         set(fileName PSI_TEST_${name})
         add_executable(${fileName} ${PROJECT_SOURCE_DIR}/tests/EntryPoint.cpp ${src})
         psi_config_target(${fileName})
-        target_link_libraries(${fileName} ${libs} psi-test ${PSI_DEP_LIBS})
+        psi_link(${fileName} ${libs} psi-test)
     endfunction()
 endif()
 
@@ -139,10 +163,7 @@ if(NOT COMMAND psi_make_examples)
         set(fileName PSI_EXAMPLE_${name})
         add_executable(${fileName} ${src})
         psi_config_target(${fileName})
-        if(ENABLE_ASAN_UBSAN)
-            set(PSI_DEP_LIBS "${PSI_DEP_LIBS};clang_rt.asan_dynamic-x86_64;clang_rt.asan_dynamic_runtime_thunk-x86_64")
-        endif()
-        target_link_libraries(${fileName} ${libs} ${PSI_DEP_LIBS})
+        psi_link(${fileName} ${libs})
     endfunction()
 endif()
 
@@ -155,10 +176,22 @@ if(NOT COMMAND psi_config_target)
         get_target_property(_psi_target_type ${target_name} TYPE)
         if(_psi_target_type STREQUAL "INTERFACE_LIBRARY")
             target_compile_features(${target_name} INTERFACE cxx_std_20)
+            # If this is the module's own library target (named after the
+            # project directory), auto-link PSI_MODULE_DEPS declared via
+            # psi_deps() at the top level — saves the user from repeating
+            # the list inside psi/CMakeLists.txt.
+            if(target_name STREQUAL projectName AND PSI_MODULE_DEPS)
+                target_link_libraries(${target_name} INTERFACE ${PSI_MODULE_DEPS})
+            endif()
             return()
         endif()
 
         target_compile_features(${target_name} PUBLIC cxx_std_20)
+
+        # Auto-link module deps for the module's own STATIC library target.
+        if(target_name STREQUAL projectName AND PSI_MODULE_DEPS)
+            target_link_libraries(${target_name} ${PSI_MODULE_DEPS})
+        endif()
 
         # Common Clang warnings (apply to both clang.exe and clang-cl since
         # CMAKE_CXX_COMPILER_ID == "Clang" in both cases).
