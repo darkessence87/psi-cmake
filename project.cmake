@@ -217,7 +217,6 @@ if(NOT COMMAND psi_config_target)
             # (gcc, clang.exe). MSVC and clang-cl share /Foo flag syntax.
             if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
                 target_compile_options(${target_name} PRIVATE
-                    /O2
                     /fsanitize=address
                     /RTC-
                 )
@@ -251,7 +250,6 @@ if(NOT COMMAND psi_config_target)
                 endif()
             else()
                 target_compile_options(${target_name} PRIVATE
-                    -O2
                     -fsanitize=address
                     -fsanitize=undefined
                 )

@@ -2,7 +2,10 @@ if (NOT DEFINED PSI_CMAKE_DIR)
     message(FATAL_ERROR "PSI_CMAKE_DIR is not set")
 endif()
 
-set (ENABLE_ASAN_UBSAN TRUE)
+# ENABLE_ASAN_UBSAN is a per-preset / per-configure cache option. Default
+# to OFF when the caller has not made a choice; presets / commandline
+# -DENABLE_ASAN_UBSAN=ON take precedence.
+option(ENABLE_ASAN_UBSAN "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 
 include (${PSI_CMAKE_DIR}/compiler.cmake)
 
