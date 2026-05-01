@@ -152,36 +152,75 @@ endif()
 if(NOT COMMAND psi_config_target)
     function(psi_config_target target_name)
         target_compile_features(${target_name} PUBLIC cxx_std_20)
+
+        # Common Clang warnings (apply to both clang.exe and clang-cl since
+        # CMAKE_CXX_COMPILER_ID == "Clang" in both cases).
+        set(_psi_clang_warnings
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wno-c++98-compat
+            -Wno-c++98-compat-pedantic
+            -Wswitch
+            -Wswitch-enum
+            -Wcovered-switch-default
+            -Wno-switch-default
+            -Wno-padded
+        )
+        foreach(_w IN LISTS _psi_clang_warnings)
+            target_compile_options(${target_name} PRIVATE
+                $<$<CXX_COMPILER_ID:Clang>:${_w}>)
+        endforeach()
+
         if(ENABLE_ASAN_UBSAN)
-            target_compile_options(${target_name} PRIVATE
-                $<$<CXX_COMPILER_ID:Clang>:-Wall>
-                $<$<CXX_COMPILER_ID:Clang>:-Wextra>
-                $<$<CXX_COMPILER_ID:Clang>:-Wpedantic>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-c++98-compat>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-c++98-compat-pedantic>
-                $<$<CXX_COMPILER_ID:Clang>:-Wswitch>
-                $<$<CXX_COMPILER_ID:Clang>:-Wswitch-enum>
-                $<$<CXX_COMPILER_ID:Clang>:-Wcovered-switch-default>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-switch-default>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-padded>
-                -O2
-                /fsanitize=address
-                -fsanitize=undefined
-                /RTC-
-            )
-        else()
-            target_compile_options(${target_name} PRIVATE
-                $<$<CXX_COMPILER_ID:Clang>:-Wall>
-                $<$<CXX_COMPILER_ID:Clang>:-Wextra>
-                $<$<CXX_COMPILER_ID:Clang>:-Wpedantic>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-c++98-compat>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-c++98-compat-pedantic>
-                $<$<CXX_COMPILER_ID:Clang>:-Wswitch>
-                $<$<CXX_COMPILER_ID:Clang>:-Wswitch-enum>
-                $<$<CXX_COMPILER_ID:Clang>:-Wcovered-switch-default>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-switch-default>
-                $<$<CXX_COMPILER_ID:Clang>:-Wno-padded>
-            )
+            # Detect MSVC-like driver (cl.exe or clang-cl) vs GNU-like driver
+            # (gcc, clang.exe). MSVC and clang-cl share /Foo flag syntax.
+            if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+                target_compile_options(${target_name} PRIVATE
+                    /O2
+                    /fsanitize=address
+                    /RTC-
+                )
+                # UBSan is only supported by clang-cl, not by MSVC cl.exe.
+                if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+                    target_compile_options(${target_name} PRIVATE
+                        -fsanitize=undefined
+                    )
+                    # Link ASAN runtime explicitly. /fsanitize=address normally
+                    # injects /defaultlib comments, but lld-link's auto-resolution
+                    # is unreliable across module boundaries (especially for
+                    # static libs embedded in executables), so we force-link
+                    # them on every target. Use the plain signature to stay
+                    # consistent with the rest of the codebase.
+                    target_link_libraries(${target_name}
+                        clang_rt.asan_dynamic-x86_64
+                        clang_rt.asan_dynamic_runtime_thunk-x86_64
+                    )
+                    # Copy the ASAN runtime DLL next to the executable so
+                    # tests/examples can run without extending PATH manually.
+                    get_target_property(_psi_target_type ${target_name} TYPE)
+                    if(_psi_target_type STREQUAL "EXECUTABLE")
+                        set(_psi_asan_dll "$ENV{LLVM_LIB}/clang_rt.asan_dynamic-x86_64.dll")
+                        if(EXISTS "${_psi_asan_dll}")
+                            add_custom_command(TARGET ${target_name} POST_BUILD
+                                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                                        "${_psi_asan_dll}"
+                                        "$<TARGET_FILE_DIR:${target_name}>"
+                                VERBATIM)
+                        endif()
+                    endif()
+                endif()
+            else()
+                target_compile_options(${target_name} PRIVATE
+                    -O2
+                    -fsanitize=address
+                    -fsanitize=undefined
+                )
+                target_link_options(${target_name} PRIVATE
+                    -fsanitize=address
+                    -fsanitize=undefined
+                )
+            endif()
         endif()
     endfunction()
 endif()

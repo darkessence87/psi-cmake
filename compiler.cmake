@@ -3,7 +3,7 @@ if(WIN32)
         if (NOT DEFINED ENV{LLVM_LIB})
             message(FATAL_ERROR "LLVM_LIB is not set")
         endif()
-        link_directories("${LLVM_LIB}")
+        link_directories("$ENV{LLVM_LIB}")
 
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
         set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
