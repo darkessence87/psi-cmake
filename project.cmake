@@ -147,8 +147,15 @@ if(NOT COMMAND psi_make_tests)
         # callers don't have to declare it themselves.
         psi_use(test)
 
+        # Use the shared EntryPoint.cpp from psi-test if no local one exists.
+        get_target_property(_psi_test_src_dir psi-test SOURCE_DIR)
+        set(_entry "${PROJECT_SOURCE_DIR}/tests/EntryPoint.cpp")
+        if(NOT EXISTS "${_entry}")
+            set(_entry "${_psi_test_src_dir}/../tests/EntryPoint.cpp")
+        endif()
+
         set(fileName PSI_TEST_${name})
-        add_executable(${fileName} ${PROJECT_SOURCE_DIR}/tests/EntryPoint.cpp ${src})
+        add_executable(${fileName} ${_entry} ${src})
         psi_config_target(${fileName})
         psi_link(${fileName} ${libs} psi-test)
     endfunction()
