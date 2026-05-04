@@ -10,20 +10,28 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # create build folder
-if(NOT DEFINED ${BUILD_DIR})
+if(NOT DEFINED BUILD_DIR)
     set(BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build)
     STRING(REGEX REPLACE "\\\\" "/" BUILD_DIR ${BUILD_DIR})
     file(MAKE_DIRECTORY ${BUILD_DIR}/bin/)
 endif()
 
-# tests
-if(NOT DEFINED PSI_BUILD_TESTS)
-    set(PSI_BUILD_TESTS TRUE)
-endif()
-
-# examples
-if(NOT DEFINED PSI_BUILD_EXAMPLES)
-    set(PSI_BUILD_EXAMPLES TRUE)
+# tests / examples
+# When loaded via psi_use() the global flag _PSI_LOADING_AS_DEP is ON.
+# Forcibly disable tests and examples regardless of any inherited normal
+# variable from the parent directory scope — inherited normals shadow CACHE
+# variables, so CACHE FORCE alone does not work.
+get_property(_psi_loading_as_dep GLOBAL PROPERTY _PSI_LOADING_AS_DEP)
+if(_psi_loading_as_dep)
+    set(PSI_BUILD_TESTS    FALSE)
+    set(PSI_BUILD_EXAMPLES FALSE)
+else()
+    if(NOT DEFINED PSI_BUILD_TESTS)
+        set(PSI_BUILD_TESTS TRUE)
+    endif()
+    if(NOT DEFINED PSI_BUILD_EXAMPLES)
+        set(PSI_BUILD_EXAMPLES TRUE)
+    endif()
 endif()
 
 message("[${projectName}] Build dir: ${BUILD_DIR}")
@@ -31,7 +39,7 @@ message("[${projectName}] PSI_BUILD_TESTS: [${PSI_BUILD_TESTS}]")
 message("[${projectName}] PSI_BUILD_EXAMPLES: [${PSI_BUILD_EXAMPLES}]")
 
 # create output folder
-if(NOT DEFINED ${BUILD_OUT})
+if(NOT DEFINED BUILD_OUT)
     if(DEFINED PSI_PRESET_NAME AND NOT PSI_PRESET_NAME STREQUAL "")
         set(BUILD_OUT ${BUILD_DIR}/bin/${PSI_PRESET_NAME})
     else()
@@ -47,6 +55,23 @@ if(NOT DEFINED ${BUILD_OUT})
 endif()
 
 message("[${projectName}] Build out: ${BUILD_OUT}")
+
+# logger
+# When ENABLE_LOGGER is ON and a sibling psi-logger checkout exists, activate
+# the real logger for all targets in this project: set the PSI_LOGGER compile
+# definition and add the logger include path globally (before any target is
+# created so that the define is visible to every compiled source).
+option(ENABLE_LOGGER "Enable psi-logger integration (PSI_LOGGER define)" OFF)
+if(ENABLE_LOGGER)
+    get_filename_component(_psi_logger_sibling "${CMAKE_CURRENT_LIST_DIR}/../psi-logger" ABSOLUTE)
+    if(EXISTS "${_psi_logger_sibling}/psi/include")
+        add_compile_definitions(PSI_LOGGER)
+        include_directories("${_psi_logger_sibling}/psi/include")
+        message("[${projectName}] PSI_LOGGER enabled (${_psi_logger_sibling})")
+    else()
+        message(WARNING "[${projectName}] ENABLE_LOGGER=ON but psi-logger not found at ${_psi_logger_sibling}")
+    endif()
+endif()
 
 # functions
 # Capture the location of psi-cmake itself at include-time so that helper
@@ -81,9 +106,9 @@ if(NOT COMMAND psi_use)
         endif()
 
         message("[${projectName}] using psi-${name}: ${_psi_dep_path}")
-        set(PSI_BUILD_TESTS false)
-        set(PSI_BUILD_EXAMPLES false)
+        set_property(GLOBAL PROPERTY _PSI_LOADING_AS_DEP ON)
         add_subdirectory(${_psi_dep_path} ${CMAKE_BINARY_DIR}/_deps/psi-${name})
+        set_property(GLOBAL PROPERTY _PSI_LOADING_AS_DEP OFF)
 
         if(${name} STREQUAL "logger")
             add_compile_definitions(PSI_LOGGER)
