@@ -192,6 +192,7 @@ if(NOT COMMAND psi_make_tests)
         add_executable(${fileName} ${_entry} ${src})
         psi_config_target(${fileName})
         psi_link(${fileName} ${libs} psi-test)
+        add_test(NAME ${fileName} COMMAND ${fileName} WORKING_DIRECTORY $<TARGET_FILE_DIR:${fileName}>)
     endfunction()
 endif()
 
@@ -251,6 +252,22 @@ if(NOT COMMAND psi_config_target)
         foreach(_w IN LISTS _psi_clang_warnings)
             target_compile_options(${target_name} PRIVATE
                 $<$<CXX_COMPILER_ID:Clang>:${_w}>)
+        endforeach()
+
+        # GCC warnings.  -Wno-unknown-pragmas suppresses warnings about
+        # #pragma clang diagnostic blocks that GCC does not recognise.
+        set(_psi_gcc_warnings
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wswitch
+            -Wswitch-enum
+            -Wno-padded
+            -Wno-unknown-pragmas
+        )
+        foreach(_w IN LISTS _psi_gcc_warnings)
+            target_compile_options(${target_name} PRIVATE
+                $<$<CXX_COMPILER_ID:GNU>:${_w}>)
         endforeach()
 
         if(ENABLE_ASAN_UBSAN)

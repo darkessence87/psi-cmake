@@ -11,9 +11,10 @@ if(WIN32)
         set(CMAKE_CXX_DEPENDS_USE_COMPILER FALSE)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
     endif()
+elseif(UNIX)
+    # Linux / macOS — GCC or Clang, no extra linker directories needed
 else()
-    message("[${projectName}] Only Windows build is supported at the moment.")
-    return()
+    message(WARNING "[${projectName}] Unsupported platform")
 endif()
 
 message("[${projectName}] CMAKE_CXX_FLAGS: [${CMAKE_CXX_FLAGS}]")
