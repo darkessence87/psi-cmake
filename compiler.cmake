@@ -1,3 +1,5 @@
+option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
+
 if(WIN32)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         if (NOT DEFINED ENV{LLVM_LIB})
@@ -10,12 +12,21 @@ if(WIN32)
         set(CMAKE_C_DEPENDS_USE_COMPILER FALSE)
         set(CMAKE_CXX_DEPENDS_USE_COMPILER FALSE)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+
+        if(ENABLE_COVERAGE)
+            add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+            add_link_options(-fprofile-instr-generate)
+        endif()
     endif()
 elseif(UNIX)
-    # Linux / macOS — GCC or Clang, no extra linker directories needed
+    if(ENABLE_COVERAGE)
+        add_compile_options(--coverage)
+        add_link_options(--coverage)
+    endif()
 else()
     message(WARNING "[${projectName}] Unsupported platform")
 endif()
 
 message("[${projectName}] CMAKE_CXX_FLAGS: [${CMAKE_CXX_FLAGS}]")
 message("[${projectName}] ENABLE_ASAN_UBSAN: [${ENABLE_ASAN_UBSAN}]")
+message("[${projectName}] ENABLE_COVERAGE: [${ENABLE_COVERAGE}]")
